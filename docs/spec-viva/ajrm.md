@@ -215,3 +215,122 @@ La aplicación web SHALL impedir que alguien sin sesión acceda a las pantallas 
 
 - **WHEN** alguien abre una ruta que la aplicación no reconoce
 - **THEN** la aplicación lo lleva a `/profile`, y de ahí a `/login` si no tiene sesión
+
+
+---
+
+## Parte B
+
+### 1. Requisitos escritos y comprobados
+
+- Requisitos escritos por el agente: 10
+- Requisitos comprobados por mí abriendo el código: 0
+
+
+### 2. Las incoherencias que aparecieron al escribirla
+
+1. El email distingue mayúsculas y minúsculas: se pueden duplicar cuentas y fallar el login
+
+- Ubicación: POST /api/v1/auth/signup y POST /api/v1/auth/login, validador de email en backend/app/validators/user.ts y la tabla users.
+- Comportamiento observado:
+  - La comprobación de email único se hace sin la opción de ignorar mayúsculas y compara el valor exacto. SQLite también compara así.
+  - Por eso Ana@correo.com y ana@correo.com pueden registrarse como dos cuentas distintas.
+  - Además, quien se registró como Ana@correo.com e intenta entrar con ana@correo.com recibe 400 («El email o la contraseña no son correctos.»).
+  - El email no se normaliza en ningún momento.
+- Por qué es anómalo: un email identifica a una persona sin importar las mayúsculas. Hoy una misma persona puede tener varias cuentas o quedarse fuera por escribir una mayúscula.
+
+2. Los tokens de acceso no caducan nunca
+
+- Ubicación: emisión de tokens en signup y login y guard api (backend/app/models/user.ts, config/auth.ts).
+- Comportamiento observado: los tokens se crean sin fecha de caducidad (token solo deja de valer si se hace logout con él.
+- Por qué es anómalo: un token filtrado o robado da acceso indefinido a la cuenta. El frontend incluso tiene preparado el mensaje «Tu sesión ha caducado», pero en el servidor
+  la sesión no caduca nunca por tiempo.
+
+3. Un logout que no llega al servidor deja el token vivo para siempre
+
+- Ubicación: pantalla /profile, botón «Cerrar sesión» (frontend/src/authogout).
+- Comportamiento observado: la sesión se borra en el navegador antes de llamar a POST /account/logout, y cualquier fallo de esa llamada se descarta en silencio.
+- Por qué es anómalo: si la llamada falla (red caída, servidor caído), l sesión, pero el token sigue siendo válido en el servidor. Como lostokens no caducan (hallazgo 2), queda activo indefinidamente.
+
+4. Con el servidor caído al arrancar, la sesión queda en un estado intermedio
+
+- Ubicación: rehidratación de la sesión al cargar la app (auth-provider.tsx, el useEffect inicial).
+- Comportamiento observado:
+  - Ante cualquier error que no sea 401, la app se muestra como «sin sesión» y lleva a /login, pero conserva el token en el navegador.
+  - La persona no puede cerrar esa sesión: la pantalla de perfil es inacbotón de salida.
+  - Al recargar más tarde, vuelve a entrar sin haber iniciado sesión.
+- Por qué es anómalo: la pantalla dice que no hay sesión, pero en el nav, por ejemplo, a un ordenador compartido: alguien que ve el login asumeque no hay nadie dentro.
+
+5. El nombre «opcional» es obligatorio en la API
+
+- Ubicación: POST /api/v1/auth/signup, campo fullName (validador signupValidator).
+- Comportamiento observado: el campo acepta null pero no admite que faltclave fullName, la API responde 422 con la regla required. La web loesquiva enviando siempre la clave.
+- Por qué es anómalo: la pantalla lo presenta como «(opcional)», pero lar cliente que no sea la web oficial falla al omitir un dato que seanuncia como opcional.
+
+6. fullName no tiene límite de longitud
+
+- Ubicación: POST /api/v1/auth/signup, campo fullName.
+- Comportamiento observado:
+  - El email tiene un máximo de 254 caracteres y la contraseña de 32, pero el nombre no tiene ningún límite.
+  - La columna se declara como string (255 en la migración), pero SQLite
+  - Resultado: se aceptan y guardan nombres de cualquier tamaño.
+- Por qué es anómalo: permite almacenar cadenas enormes y es incoherentesí están acotados. Si la base de datos cambia a una que sí aplique ellímite, el mismo dato pasaría a dar un error de servidor.
+
+7. Las iniciales se calculan mal con espacios repetidos
+
+- Ubicación: campo initials en las respuestas de signup, login y perfil (getter initials del modelo de usuario).
+- Comportamiento observado: el nombre se parte por un solo espacio (spli(dos espacios), la segunda parte es una cadena vacía y las inicialessalen «AD» en lugar de «AL». La API no recorta ni normaliza el nombre; solo la web recorta los extremos.
+- Por qué es anómalo: el mismo nombre produce iniciales distintas según ios, y el avatar del perfil muestra letras que no corresponden al nombrey al apellido.
+
+8. Sin nombre, la segunda inicial sale del dominio del email
+
+- Ubicación: campo initials cuando fullName es null.
+- Comportamiento observado: el email se parte por la @, así que ana@flow de la persona y la «F» del dominio. Todas las personas de la mismaempresa comparten esa segunda letra.
+- Por qué es anómalo: la segunda letra identifica a la empresa, no a la ales de nadie.
+
+9. Los mensajes de longitud empiezan en minúscula
+
+- Ubicación: pantallas /register y /login, errores de longitud mínima y ts, función translate).
+- Comportamiento observado: el mensaje se construye como ${label} debe tener al menos 8 caracteres., donde label vale «la contraseña», «el email», etc. La persona ve «la
+  contraseña debe tener al menos 8 caracteres.», con la primera letra en
+- Por qué es anómalo: es un defecto visible de redacción. El resto de mensajes de la app empiezan con mayúscula.
+
+10. Una contraseña corta produce dos errores, uno de ellos engañoso
+
+- Ubicación: POST /api/v1/auth/signup y la pantalla /register.
+- Comportamiento observado:
+  - La confirmación de la contraseña se valida también con las reglas de longitud de la contraseña.
+  - Si alguien escribe dos veces una contraseña de 5 caracteres, la API tud.
+  - La pantalla muestra dos mensajes: «la contraseña debe tener al menos 8 caracteres.» y «la confirmación de la contraseña debe tener al menos 8 caracteres.».
+- Por qué es anómalo: la confirmación solo debe comprobar que coincide.  problema distinto al real y duplica el aviso.
+
+11. Cualquier 400 se muestra como «credenciales incorrectas»
+
+- Ubicación: frontend/src/lib/api.ts, función toApiError.
+- Comportamiento observado: todo error 400, venga del endpoint que venga, se convierte en «El email o la contraseña no son correctos.». Del mismo modo, todo 401 se muestra
+  como «Tu sesión ha caducado».
+- Por qué es anómalo: el mensaje se decide solo por el código de estado, no por el error real. Hoy coincide por casualidad, porque solo el login devuelve 400. Cualquier otro
+  400 enseñaría un mensaje falso.
+
+12. El aviso de sesión perdida solo aparece en /login
+
+- Ubicación: pantallas /login y /register.
+- Comportamiento observado:
+  - El motivo por el que se perdió la sesión («Tu sesión ha caducado…», se muestra en /login.
+  - Si la persona pasa a /register desaparece, y al volver a /login reaparece.
+  - Solo se borra al enviar el formulario de login, o al iniciar sesión
+- Por qué es anómalo: un aviso que depende de en qué pantalla estés y que vuelve a salir tras navegar entre pantallas resulta confuso.
+
+13. El logout no sigue el formato del resto de respuestas
+
+- Ubicación: POST /api/v1/account/logout.
+- Comportamiento observado: responde { "message": "Logged out successfulta": ... }. El resto de endpoints de la API sí lo usan. El mensaje además está en inglés, mientras que el producto está en castellano. Pasa lo mismo con GET /, que devuelve { "hello": "world" }.
+- Por qué es anómalo: rompe el contrato de respuesta, y un cliente genéribe undefined. La web no lo nota porque ignora el cuerpo de la respuesta.
+
+14. En producción, la web no puede llamar a la API
+
+- Ubicación: configuración CORS del backend (backend/config/cors.ts).
+- Comportamiento observado: en desarrollo se acepta cualquier origen. Fuera de desarrollo la lista de orígenes permitidos está vacía, así que el navegador bloquea todas las  peticiones de la web a la API.
+- Por qué es anómalo: si se despliega tal cual, el registro, el login y el perfil dejan de funcionar desde el navegador, y ninguna variable de entorno permite configurar esa lista.
+
+---
