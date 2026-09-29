@@ -8,7 +8,7 @@ Permite que una persona cree su cuenta en FlowSync, inicie y cierre sesión y co
 
 ### Requirement: Registro de cuenta
 
-El sistema SHALL permitir crear una cuenta con `POST /api/v1/auth/signup`, enviando un email, una contraseña, su confirmación y, de forma opcional, un nombre completo. Al registrarse, el usuario SHALL quedar autenticado sin tener que iniciar sesión aparte.
+El sistema SHALL permitir crear una cuenta con `POST /api/v1/auth/signup`, enviando `email`, `password`, `passwordConfirmation` y `fullName`. La clave `fullName` SHALL enviarse siempre, pero puede valer `null` si la persona no quiere dar su nombre. Al registrarse, el usuario SHALL quedar autenticado sin tener que iniciar sesión aparte.
 
 #### Scenario: Registro correcto
 
@@ -19,6 +19,11 @@ El sistema SHALL permitir crear una cuenta con `POST /api/v1/auth/signup`, envia
 
 - **WHEN** alguien se registra con datos válidos y `fullName` a `null`
 - **THEN** la cuenta se crea y el `user` devuelto tiene `fullName` a `null`
+
+#### Scenario: Registro sin la clave del nombre
+
+- **WHEN** alguien se registra con datos válidos pero sin incluir la clave `fullName` en el cuerpo
+- **THEN** la API responde `422` con un error sobre el campo `fullName` y no crea ninguna cuenta
 
 #### Scenario: Email ya registrado
 
@@ -77,6 +82,11 @@ El sistema SHALL devolver los datos del usuario autenticado con `GET /api/v1/acc
 - **WHEN** se consulta un usuario cuyo `fullName` tiene al menos dos palabras
 - **THEN** `initials` son las iniciales, en mayúsculas, de sus dos primeras palabras
 
+#### Scenario: Iniciales con nombre de una sola palabra
+
+- **WHEN** se consulta un usuario cuyo `fullName` es una sola palabra, por ejemplo «Ada»
+- **THEN** `initials` son las dos primeras letras de esa palabra en mayúsculas («AD»)
+
 #### Scenario: Iniciales sin nombre
 
 - **WHEN** se consulta un usuario sin `fullName`
@@ -134,6 +144,11 @@ La aplicación web SHALL ofrecer en `/login` un formulario con los campos «Emai
 - **WHEN** la persona introduce un email o una contraseña que no corresponden a ninguna cuenta
 - **THEN** ve una alerta en la parte superior del formulario con el texto «El email o la contraseña no son correctos.»
 
+#### Scenario: Campos del login inválidos
+
+- **WHEN** la persona pulsa «Entrar» con un email mal formado o con la contraseña vacía
+- **THEN** ve bajo el campo afectado «Introduce una dirección de email válida.» o «Falta rellenar la contraseña.»
+
 #### Scenario: Servidor inaccesible
 
 - **WHEN** la persona intenta entrar o darse de alta y el servidor no responde
@@ -151,7 +166,7 @@ La aplicación web SHALL mostrar en `/profile` los datos de la persona con sesi�
 #### Scenario: Cerrar sesión
 
 - **WHEN** la persona pulsa «Cerrar sesión»
-- **THEN** el botón muestra «Cerrando sesión…», la persona vuelve a `/login` sin sesión y al recargar la página sigue sin sesión, aunque el servidor no haya podido confirmar el cierre
+- **THEN** la persona vuelve de inmediato a `/login` sin sesión y al recargar la página sigue sin sesión, aunque el servidor no haya podido confirmar el cierre
 
 ### Requirement: Persistencia de la sesión en el navegador
 
@@ -171,6 +186,16 @@ La aplicación web SHALL conservar la sesión entre recargas y SHALL comprobarla
 
 - **WHEN** la aplicación arranca con una sesión guardada y el servidor no responde
 - **THEN** la persona acaba en `/login` con la alerta «No se pudo conectar con el servidor. Comprueba que el backend está arrancado.», y si recarga cuando el servidor vuelve a responder, entra de nuevo sin iniciar sesión
+
+#### Scenario: Error del servidor al arrancar
+
+- **WHEN** la aplicación arranca con una sesión guardada y el servidor responde con un error interno
+- **THEN** la persona acaba en `/login` con la alerta «Algo ha ido mal en el servidor. Inténtalo de nuevo en un momento.», y la sesión guardada se conserva para la siguiente recarga
+
+#### Scenario: El aviso de sesión perdida se mantiene
+
+- **WHEN** la persona está en `/login` viendo el aviso de por qué perdió la sesión y todavía no ha intentado entrar
+- **THEN** el aviso sigue visible hasta que envía el formulario, y a partir de ahí lo sustituye el resultado de ese intento
 
 ### Requirement: Protección de rutas en la aplicación web
 
