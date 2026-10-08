@@ -1,0 +1,19 @@
+# Verificación · tasks · «Lo que cada tarea muestra de su responsable»
+
+Fuente: `openspec/specs/tasks/spec.md`, requisito «Lo que cada tarea muestra de su responsable».
+Tests: `backend/tests/functional/tasks/assignee.spec.ts`, grupo `Tasks | responsable`. Cada scenario se comprueba por las dos lecturas que nombra la spec («suelta o dentro de la lista»): `GET /api/v1/tasks` y `GET /api/v1/tasks/:id`.
+
+- **Scenarios del requisito:** 3
+- **Cubiertos:** 3 (uno de ellos con un test en rojo, ver abajo)
+
+| Scenario | Test que lo cubre | Estado | Qué faltó para decidir |
+|---|---|---|---|
+| Una tarea cuyo responsable es "Ada Lovelace" trae en `assignee` ese nombre y sus iniciales. | `Tasks \| responsable` › `en la lista, el responsable llega con su nombre y sus iniciales` · `en la tarea suelta, el responsable llega con su nombre y sus iniciales` | Cubierto | |
+| Una tarea, suelta o en la lista, no trae en `assignee` el email ni datos de acceso. | `Tasks \| responsable` › `en la lista, el responsable no trae el email ni datos de acceso` · `en la tarea suelta, el responsable no trae el email ni datos de acceso` | Cubierto | |
+| Si el responsable se registró sin nombre, `assignee` trae nombre nulo e iniciales. | `Tasks \| responsable` › `en la lista, un responsable sin nombre llega con nombre nulo y sus iniciales` · `en la tarea suelta, un responsable sin nombre llega con nombre nulo y sus iniciales` | Cubierto | |
+
+## Lo que han encontrado los tests
+
+**`en la lista, el responsable no trae el email ni datos de acceso` falla.** La lista devuelve el `email` del responsable en cada tarea. La causa es que `backend/app/transformers/task_transformer.ts` serializa el `assignee` con `UserTransformer` (que incluye `email`, `createdAt` y `updatedAt`) en lugar de con `TaskAssigneeTransformer`, que es el que usa la tarea suelta y sí cumple. `TaskTransformer` también lo usan `POST /api/v1/tasks` y `PATCH /api/v1/tasks/:id/status`, así que esas respuestas filtran el email igual. El scenario solo habla de la lista y de la tarea suelta, y por eso esas dos rutas no tienen test aquí. El arreglo queda fuera de este cambio porque toca código de `backend/app/`.
+
+Matiz del requisito que el scenario no recoge: el texto del requisito dice que NO SHALL exponerse «ningún otro dato de esa cuenta» aparte del nombre y las iniciales, y `TaskAssigneeTransformer` devuelve además el `id` de la cuenta. El scenario solo prohíbe «el email ni ningún otro dato de acceso», y el `id` no es un dato de acceso, así que los tests no lo comprueban.
