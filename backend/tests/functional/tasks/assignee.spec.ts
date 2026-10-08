@@ -14,20 +14,30 @@ import testUtils from '@adonisjs/core/services/test_utils'
 test.group('Tasks | responsable', (group) => {
   group.each.setup(() => testUtils.db().withGlobalTransaction())
 
-  /**
-   * Crea la cuenta, inicia sesión y apunta una tarea con ese token: la tarea
-   * nace a nombre de quien la crea, así que esa cuenta es su responsable.
-   */
-  async function tareaDe(client: any, fullName: string | null, email = 'ada@example.com') {
+  async function sesion(client: any, fullName: string | null, email: string) {
     await User.create({ fullName, email, password: 'secreto123' })
 
     const login = await client.post('/api/v1/auth/login').json({ email, password: 'secreto123' })
-    const token = login.body().data.token as string
+    login.assertStatus(200)
+
+    return login.body().data.token as string
+  }
+
+  /**
+   * La responsable apunta una tarea (nace a su nombre) y otra cuenta distinta
+   * es la que la lee: así lo que se comprueba es el `assignee`, y no el perfil
+   * de quien hace la petición.
+   */
+  async function tareaDe(client: any, fullName: string | null, email = 'ada@example.com') {
+    const responsable = await sesion(client, fullName, email)
 
     const creada = await client
       .post('/api/v1/tasks')
-      .header('Authorization', `Bearer ${token}`)
+      .header('Authorization', `Bearer ${responsable}`)
       .json({ title: 'Revisar el informe' })
+    creada.assertStatus(201)
+
+    const token = await sesion(client, 'Alan Turing', 'alan@example.com')
 
     return { token, id: creada.body().data.id as number }
   }
@@ -35,20 +45,24 @@ test.group('Tasks | responsable', (group) => {
   /**
    * El `assignee` de la tarea `id` según cada una de las dos lecturas.
    */
-  const lecturas: Array<[string, (client: any, token: string, id: number) => Promise<any>]> = [
+  const lecturas: Array<
+    [string, (client: any, assert: any, token: string, id: number) => Promise<any>]
+  > = [
     [
       'en la lista',
-      async (client, token, id) => {
+      async (client, assert, token, id) => {
         const response = await client
           .get('/api/v1/tasks')
           .header('Authorization', `Bearer ${token}`)
         response.assertStatus(200)
-        return response.body().data.find((tarea: any) => tarea.id === id).assignee
+        const tarea = response.body().data.find((t: any) => t.id === id)
+        assert.isDefined(tarea, 'la tarea no aparece en la lista')
+        return tarea.assignee
       },
     ],
     [
       'en la tarea suelta',
-      async (client, token, id) => {
+      async (client, _assert, token, id) => {
         const response = await client
           .get(`/api/v1/tasks/${id}`)
           .qs({ today: '2026-10-07' })
@@ -66,7 +80,7 @@ test.group('Tasks | responsable', (group) => {
     }) => {
       const { token, id } = await tareaDe(client, 'Ada Lovelace')
 
-      const assignee = await leer(client, token, id)
+      const assignee = await leer(client, assert, token, id)
 
       assert.equal(assignee.fullName, 'Ada Lovelace')
       assert.equal(assignee.initials, 'AL')
@@ -78,7 +92,7 @@ test.group('Tasks | responsable', (group) => {
     }) => {
       const { token, id } = await tareaDe(client, 'Ada Lovelace')
 
-      const assignee = await leer(client, token, id)
+      const assignee = await leer(client, assert, token, id)
 
       assert.notProperty(assignee, 'email')
       assert.notProperty(assignee, 'password')
@@ -96,7 +110,7 @@ test.group('Tasks | responsable', (group) => {
     }) => {
       const { token, id } = await tareaDe(client, null)
 
-      const assignee = await leer(client, token, id)
+      const assignee = await leer(client, assert, token, id)
 
       assert.property(assignee, 'fullName')
       assert.isNull(assignee.fullName)
