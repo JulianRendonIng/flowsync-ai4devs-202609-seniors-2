@@ -85,3 +85,11 @@ grep (imports relativos, serialize, @column, vine.create, testUtils, fetch, base
 cd backend && node ace list:routes && npm run lint && npm run typecheck   # lint y typecheck en verde
 cd frontend && npx oxlint && npx prettier --check --end-of-line auto .    # en verde
 ```
+
+## Parte B
+
+1. **La regla en la que la auditoría más se desvió de su expectativa inicial fue P3, la de no commitear directamente en `main` ni en una `sN/*`.** Al empezar se esperaba marcarla como «no se puede comprobar», porque git no guarda en qué rama nace cada commit. Pero la historia es una línea recta, sin merges ni ramas de trabajo que contengan esos commits. Además, `afc4b74` y `b955a72` lo dicen en su propio mensaje: van «en la rama de partida». Aquella expectativa era más una intuición que un análisis, y los mensajes de los commits la desmintieron.
+
+2. **La regla que la auditoría no pudo comprobar fue P7, la de pasar el `adversarial-reviewer` sobre el PR.** Hoy esa revisión no deja huella en ningún sitio, así que no hay forma de saber si se hizo. Bastaría con que el subagente dejara su veredicto como comentario o como check en el PR, y con que la protección de rama exigiera ese check antes de fusionar.
+
+3. **La regla que la auditoría propone eliminar es D13: que `auth/auth-context.ts` tenga solo el contexto, sin componentes.** Es una regla que ya vigila otra herramienta. La regla `react/only-export-components` de oxlint falla en cuanto alguien mezcla un componente en ese fichero. Tenerla también en `CLAUDE.md` no añade ningún control y solo ocupa contexto.
