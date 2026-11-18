@@ -1,0 +1,53 @@
+# FlowSync — bases de datos PostgreSQL para desarrollo y pruebas.
+#
+#   db       desarrollo, puerto 54410 del host, datos en un volumen con nombre.
+#   db-test  pruebas,    puerto 54411 del host, datos en memoria (tmpfs): cada
+#            arranque empieza vacío, así que una ejecución de la suite no
+#            hereda lo que dejó la anterior.
+#
+# Arrancar con `docker compose up -d --wait` (o `make db-up`): `--wait` no
+# vuelve hasta que los dos healthchecks pasan.
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: flowsync
+      POSTGRES_PASSWORD: flowsync
+      POSTGRES_DB: flowsync
+    ports:
+      - "54410:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    # `-h localhost` fuerza la comprobación por TCP. En el primer arranque la
+    # imagen inicializa la base con un servidor temporal que solo escucha por
+    # socket Unix; por socket, pg_isready lo daría por sano antes de tiempo.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -U flowsync -d flowsync"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  db-test:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: flowsync
+      POSTGRES_PASSWORD: flowsync
+      POSTGRES_DB: flowsync_test
+    ports:
+      - "54411:5432"
+    # Sin volumen: el directorio de datos vive en memoria y desaparece al
+    # parar el contenedor.
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pg_isready -h localhost -U flowsync -d flowsync_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+volumes:
+  db-data:
